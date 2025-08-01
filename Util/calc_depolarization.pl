@@ -1,22 +1,14 @@
 #!/usr/bin/perl
 
 $m = @ARGV[0];
-$n = @ARGV[1];
 
-$D_rot = 3000.0; #Units: s^-1
+$xi = 0.0; # Analyzer angle for VV
+$I0 = 1.0;
+$Q0 = 1.0;
 
-open(DEPOL_90, ">delta_90.dat");
+open(DEPOL, ">depolarization.dat");
 
-for ($w=0; $w<$m; $w++) {
-for ($k=0; $k<$n; $k++) {
-	if ($k < 10) {
-		$k_form = '00' . $k;
-	} elsif ($k < 100) {
-		$k_form = '0' . $k;
-	} else {
-		$k_form = $k;
-	}
-
+for ($w=0; $w<=$m; $w++) {
 	if ($w < 10) {
 		$w_form = '00' . $w;
 	} elsif ($w < 100) {
@@ -25,12 +17,12 @@ for ($k=0; $k<$n; $k++) {
 		$w_form = $w;
 	}
 
-	$file_in = "w$w_form" . "r000" . "k$k_form" . ".sca";
+	$file_in = "w$w_form" . "r000" . ".avg";
 
 	open(IN, $file_in);
 
 	# Parse header.
-	for ($i=0; $i < 16; $i++) {
+	for ($i=0; $i < 12; $i++) {
 		<IN>;
 	}
 
@@ -42,10 +34,9 @@ for ($k=0; $k<$n; $k++) {
 	$wavelength *= 1000.0;
 
 	print "Calcating depolarization ratio at $wavelength nm.\n";
-	open(DEPOL_RATIO, ">>depolarization_$wavelength.dat");
 
 	# Parse header.
-	for ($i=0; $i < 16; $i++) {
+	for ($i=0; $i < 11; $i++) {
 		<IN>;
 	}
 
@@ -53,12 +44,7 @@ for ($k=0; $k<$n; $k++) {
 	($junk, $theta0, $junk) = split(/=/, $orient_angle_line, 3);
 	$theta0 =~ s/\s//gi;
 
-	print "Calculating for angle $theta0.\n";
-
-	$file_stub = ">depol_" . $w . "_$theta0.dpl";
-
-	open(OUT, $file_stub);
-	for ($i=0; $i < 13; $i++) {
+	for ($i=0; $i < 16; $i++) {
 		<IN>;
 	}
 
@@ -78,42 +64,32 @@ for ($k=0; $k<$n; $k++) {
 			(       $theta[$phi_count], $phi, $pol, $s11, $s12, $s21, $s22, $s31, $s33, $s44, $s34, $s43) = split(/;/, $line);
 		}
 
-		# For this calculation, see A. Ben-David, J. Geophys. Res. 1998, 103, 26041-26050.
-		$m11 = $s11;
-		$m22 = ($s22 - $s33)/2.0;
-		$m33 = -$m22;
-		$b22 = ($m22 + abs($m33))/2.0;
-	
-		$delta[$phi_count] = (1 - $b22/$m11) / (1 + $b22/$m11);
-		if ($delta[$phi_count] > $max_delta) {
-			$max_delta = $delta[$phi_count];
+		# Apply Mueller matrix to get scattered Stokes vector.
+		$Is = ($s11 * $I0 + $s12 * $Q0);
+		$Qs = ($s21 * $I0 + $s22 * $Q0);
+
+		# Apply Mueller matrix for an ideal polarizer.
+		$I_VV = 0.5 * ($Is + cos(2.0*$xi) * $Qs);
+		$I_VH = 0.5 * ($Is + cos(2.0*($xi + 3.14159/2.0)) * $Qs);
+
+		if ($I_VV == 0) {
+			$I_VV = 1;
 		}
+		$delta[$phi_count] = $I_VH / $I_VV;
 
-		print OUT $theta[$phi_count] . " $phi $wavelength " . $delta[$phi_count] ."\n";
 
+		# The calculation is only valid for theta = 0 because of the definition of
+		# the incident Stokes vector.
 		if ($theta[$phi_count] == 0) {
-			$pseudo_time = 1.0/sqrt(6.0 * $D_rot) * ($theta0 * 3.14159/180.0)**2;
 			print "Depolarization ratio @ 0 deg: " . $delta[$phi_count] . "\n";
-			print DEPOL_RATIO "$pseudo_time $theta0 " . $delta[$phi_count] . "\n";
 
-			if ($theta0 == 90) {
-				print DEPOL_90 "$wavelength " . $delta[$phi_count] . "\n";
-			}
+			print DEPOL "$wavelength " . $delta[$phi_count] . "\n";
 		}
 
 		$phi_count++;
 	}
-	close(OUT);
-	close(DEPOL_RATIO);
-
-	$file_stub = ">depol_" . $w . "_$theta0.nml";
-	open(OUT, $file_stub);
-	for ($i=0; $i<$phi_count; $i++) {
-		print OUT $theta[$i] . " " . $delta[$i]/$max_delta . "\n";
-	}
-	close(OUT);
 	close(IN);
 }
-}
-close(DEPOL_90);
+
+close(DEPOL);
 exit;
