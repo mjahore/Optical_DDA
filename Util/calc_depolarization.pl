@@ -3,6 +3,9 @@
 $m = @ARGV[0];
 
 $xi = 0.0; # Analyzer angle for VV
+
+# Define the incident Stokes vector (U0 = V0 = 0). Linearly polarized in y,
+# with the scattering plane at theta = 90.
 $I0 = 1.0;
 $Q0 = 1.0;
 
@@ -36,19 +39,9 @@ for ($w=0; $w<=$m; $w++) {
 	print "Calcating depolarization ratio at $wavelength nm.\n";
 
 	# Parse header.
-	for ($i=0; $i < 11; $i++) {
+	for ($i=0; $i < 28; $i++) {
 		<IN>;
 	}
-
-	$orient_angle_line = <IN>;
-	($junk, $theta0, $junk) = split(/=/, $orient_angle_line, 3);
-	$theta0 =~ s/\s//gi;
-
-	for ($i=0; $i < 16; $i++) {
-		<IN>;
-	}
-
-	$max_delta = 0;
 
 	$phi_count = 0;
 	while(<IN>) {
@@ -68,11 +61,13 @@ for ($w=0; $w<=$m; $w++) {
 		$Is = ($s11 * $I0 + $s12 * $Q0);
 		$Qs = ($s21 * $I0 + $s22 * $Q0);
 
-		# Apply Mueller matrix for an ideal polarizer.
+		# Apply Mueller matrix for an ideal polarizer to scattered
+		# Stokes vector.
 		$I_VV = 0.5 * ($Is + cos(2.0*$xi) * $Qs);
 		$I_VH = 0.5 * ($Is + cos(2.0*($xi + 3.14159/2.0)) * $Qs);
 
 		if ($I_VV == 0) {
+			print "Warning: I_VV = 0!\n";
 			$I_VV = 1;
 		}
 		$delta[$phi_count] = $I_VH / $I_VV;
